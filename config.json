@@ -1,0 +1,23 @@
+{
+  "projector": {
+    "lat": 40.786400,
+    "lon": -119.204500,
+    "alt_m": 1200.0,
+    "azimuth": 0.0,
+    "h_fov": 60.0,
+    "v_fov": 45.0
+  },
+  "hazard_zone": {
+    "max_nohd_meters": 3500.0
+  },
+  "system": {
+    "watchdog_timeout": 1.0,
+    "adsb_url": "http://127.0.0.1:8080/data/aircraft.json",
+    "log_path": "logs/safety_system.log"
+  },
+  "osc_targets": {
+    "madmapper": {"ip": "127.0.0.1", "port": 8000},
+    "pangolin": {"ip": "127.0.0.1", "port": 9000},
+    "openlase": {"ip": "127.0.0.1", "port": 7000}
+  }
+}

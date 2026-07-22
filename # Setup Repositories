@@ -1,0 +1,311 @@
+# Setup Repository
+
+### 1. `src/node_madmapper.py`
+
+```python
+import math
+import time
+import requests
+import argparse
+from pythonosc import udp_client
+
+parser = argparse.ArgumentParser(description='MadMapper Laser Safety Node')
+parser.add_argument('--mode', choices=['mask', 'kill'], default='mask',
+                    help="Choose 'mask' for dynamic blanking or 'kill' to cut master opacity.")
+args = parser.parse_args()
+
+MM_IP = "127.0.0.1"
+MM_PORT = 8000
+PROJ_LAT = 40.786400
+PROJ_LON = -119.204500
+PROJ_ALT_M = 1200.0
+PROJ_AZIMUTH = 0.0
+PROJ_H_FOV = 60.0
+PROJ_V_FOV = 45.0
+WATCHDOG_TIMEOUT = 1.0
+MAX_NOHD_METERS = 3500.0
+
+osc_client = udp_client.SimpleUDPClient(MM_IP, MM_PORT)
+
+def wgs84_to_local_enu(lat, lon, alt_m, ref_lat, ref_lon, ref_alt_m):
+    x_east = (lon - ref_lon) * 111320.0 * math.cos(math.radians(ref_lat))
+    y_north = (lat - ref_lat) * 110574.0
+    z_up = alt_m - ref_alt_m
+    return x_east, y_north, z_up
+
+def enu_to_spherical(x, y, z):
+    h_dist = math.sqrt(x**2 + y**2)
+    azimuth = (math.degrees(math.atan2(x, y)) + 360) % 360
+    elevation = math.degrees(math.atan2(z, h_dist))
+    return azimuth, elevation
+
+def spherical_to_texture_uv(az, el, p_az, h_fov, v_fov):
+    az_diff = (az - p_az + 540) % 360 - 180
+    if abs(az_diff) > (h_fov / 2.0) or abs(el) > (v_fov / 2.0):
+        return None
+    u = (az_diff + (h_fov / 2.0)) / h_fov
+    v = (el + (v_fov / 2.0)) / v_fov
+    return max(0.0, min(1.0, u)), max(0.0, min(1.0, v))
+
+last_valid_data_time = time.time()
+print(f"Starting MadMapper Node. Mode: {args.mode.upper()}")
+
+while True:
+    current_time = time.time()
+    target_in_zone = False
+    
+    try:
+        response = requests.get("http://127.0.0.1:8080/data/aircraft.json", timeout=0.5)
+        target = response.json().get("aircraft", [{}])[0]
+        
+        if "lat" in target:
+            last_valid_data_time = current_time
+            x, y, z = wgs84_to_local_enu(target["lat"], target["lon"], target.get("alt_baro", 0) * 0.3048, PROJ_LAT, PROJ_LON, PROJ_ALT_M)
+            slant_range = math.sqrt(x**2 + y**2 + z**2)
+            
+            if slant_range <= MAX_NOHD_METERS:
+                az, el = enu_to_spherical(x, y, z)
+                uv = spherical_to_texture_uv(az, el, PROJ_AZIMUTH, PROJ_H_FOV, PROJ_V_FOV)
+                
+                if uv:
+                    target_in_zone = True
+                    if args.mode == 'mask':
+                        u, v = uv
+                        p = 0.05
+                        osc_client.send_message("/surfaces/Dynamic_Blanking_Zone/quad/point_1_x", max(0.0, u - p))
+                        osc_client.send_message("/surfaces/Dynamic_Blanking_Zone/quad/point_1_y", max(0.0, v - p))
+                        osc_client.send_message("/surfaces/Dynamic_Blanking_Zone/quad/point_2_x", min(1.0, u + p))
+                        osc_client.send_message("/surfaces/Dynamic_Blanking_Zone/quad/point_2_y", max(0.0, v - p))
+                        osc_client.send_message("/surfaces/Dynamic_Blanking_Zone/quad/point_3_x", min(1.0, u + p))
+                        osc_client.send_message("/surfaces/Dynamic_Blanking_Zone/quad/point_3_y", min(1.0, v + p))
+                        osc_client.send_message("/surfaces/Dynamic_Blanking_Zone/quad/point_4_x", max(0.0, u - p))
+                        osc_client.send_message("/surfaces/Dynamic_Blanking_Zone/quad/point_4_y", min(1.0, v + p))
+                        osc_client.send_message("/surfaces/Dynamic_Blanking_Zone/visible", 1)
+                else:
+                    osc_client.send_message("/surfaces/Dynamic_Blanking_Zone/visible", 0)
+    except Exception:
+        pass
+        
+    if (current_time - last_valid_data_time > WATCHDOG_TIMEOUT) or (target_in_zone and args.mode == 'kill'):
+        osc_client.send_message("/master_opacity", 0.0)
+    else:
+        osc_client.send_message("/master_opacity", 1.0)
+        
+    time.sleep(0.05)
+
+```
+
+---
+
+### 2. `src/node_pangolin.py`
+
+```python
+import math
+import time
+import requests
+import argparse
+from pythonosc import udp_client
+
+parser = argparse.ArgumentParser(description='Pangolin BEYOND Safety Node')
+parser.add_argument('--mode', choices=['mask', 'kill'], default='mask',
+                    help="Choose 'mask' for dynamic blanking or 'kill' to trigger master blackout.")
+args = parser.parse_args()
+
+P_IP = "127.0.0.1"
+P_PORT = 9000
+PROJ_LAT = 40.786400
+PROJ_LON = -119.204500
+PROJ_ALT_M = 1200.0
+PROJ_AZIMUTH = 0.0
+PROJ_H_FOV = 60.0
+PROJ_V_FOV = 45.0
+WATCHDOG_TIMEOUT = 1.0
+MAX_NOHD_METERS = 3500.0
+
+osc_client = udp_client.SimpleUDPClient(P_IP, P_PORT)
+
+def wgs84_to_local_enu(lat, lon, alt_m, ref_lat, ref_lon, ref_alt_m):
+    x_east = (lon - ref_lon) * 111320.0 * math.cos(math.radians(ref_lat))
+    y_north = (lat - ref_lat) * 110574.0
+    z_up = alt_m - ref_alt_m
+    return x_east, y_north, z_up
+
+def enu_to_spherical(x, y, z):
+    h_dist = math.sqrt(x**2 + y**2)
+    azimuth = (math.degrees(math.atan2(x, y)) + 360) % 360
+    elevation = math.degrees(math.atan2(z, h_dist))
+    return azimuth, elevation
+
+def spherical_to_texture_uv(az, el, p_az, h_fov, v_fov):
+    az_diff = (az - p_az + 540) % 360 - 180
+    if abs(az_diff) > (h_fov / 2.0) or abs(el) > (v_fov / 2.0):
+        return None
+    u = (az_diff + (h_fov / 2.0)) / h_fov
+    v = (el + (v_fov / 2.0)) / v_fov
+    return max(0.0, min(1.0, u)), max(0.0, min(1.0, v))
+
+last_valid_data_time = time.time()
+print(f"Starting Pangolin BEYOND Node. Mode: {args.mode.upper()}")
+
+while True:
+    current_time = time.time()
+    target_in_zone = False
+    
+    try:
+        response = requests.get("http://127.0.0.1:8080/data/aircraft.json", timeout=0.5)
+        target = response.json().get("aircraft", [{}])[0]
+        
+        if "lat" in target:
+            last_valid_data_time = current_time
+            x, y, z = wgs84_to_local_enu(target["lat"], target["lon"], target.get("alt_baro", 0) * 0.3048, PROJ_LAT, PROJ_LON, PROJ_ALT_M)
+            slant_range = math.sqrt(x**2 + y**2 + z**2)
+            
+            if slant_range <= MAX_NOHD_METERS:
+                az, el = enu_to_spherical(x, y, z)
+                uv = spherical_to_texture_uv(az, el, PROJ_AZIMUTH, PROJ_H_FOV, PROJ_V_FOV)
+                
+                if uv:
+                    target_in_zone = True
+                    if args.mode == 'mask':
+                        u, v = uv
+                        p_x = int((u * 65535) - 32768)
+                        p_y = int((v * 65535) - 32768)
+                        osc_client.send_message("/beyond/blankingzone/1/x", p_x)
+                        osc_client.send_message("/beyond/blankingzone/1/y", p_y)
+                        osc_client.send_message("/beyond/blankingzone/1/visible", 1)
+                else:
+                    osc_client.send_message("/beyond/blankingzone/1/visible", 0)
+    except Exception:
+        pass
+        
+    if (current_time - last_valid_data_time > WATCHDOG_TIMEOUT) or (target_in_zone and args.mode == 'kill'):
+        osc_client.send_message("/beyond/master/blackout", 1)
+    else:
+        osc_client.send_message("/beyond/master/blackout", 0)
+        
+    time.sleep(0.05)
+
+```
+
+---
+
+### 3. `tests/test_geometry.py`
+
+```python
+import unittest
+import math
+
+def wgs84_to_local_enu(lat, lon, alt_m, ref_lat, ref_lon, ref_alt_m):
+    x_east = (lon - ref_lon) * 111320.0 * math.cos(math.radians(ref_lat))
+    y_north = (lat - ref_lat) * 110574.0
+    z_up = alt_m - ref_alt_m
+    return x_east, y_north, z_up
+
+def enu_to_spherical(x, y, z):
+    h_dist = math.sqrt(x**2 + y**2)
+    azimuth = (math.degrees(math.atan2(x, y)) + 360) % 360
+    elevation = math.degrees(math.atan2(z, h_dist))
+    return azimuth, elevation
+
+def spherical_to_texture_uv(az, el, p_az, h_fov, v_fov):
+    az_diff = (az - p_az + 540) % 360 - 180
+    if abs(az_diff) > (h_fov / 2.0) or abs(el) > (v_fov / 2.0):
+        return None
+    u = (az_diff + (h_fov / 2.0)) / h_fov
+    v = (el + (v_fov / 2.0)) / v_fov
+    return max(0.0, min(1.0, u)), max(0.0, min(1.0, v))
+
+class TestLaserSafetyLogic(unittest.TestCase):
+    
+    def setUp(self):
+        self.ref_lat = 40.786400
+        self.ref_lon = -119.204500
+        self.ref_alt = 1200.0
+        self.azimuth = 0.0 
+        self.h_fov = 60.0
+        self.v_fov = 45.0
+        self.max_nohd = 3500.0 
+
+    def test_aircraft_inside_nohd_and_inside_fov(self):
+        test_lat = self.ref_lat + (1000.0 / 110574.0) 
+        test_lon = self.ref_lon         
+        y_dist = 1000.0
+        test_alt = self.ref_alt + (math.tan(math.radians(22.5)) * y_dist)
+        
+        x, y, z = wgs84_to_local_enu(test_lat, test_lon, test_alt, self.ref_lat, self.ref_lon, self.ref_alt)
+        slant_range = math.sqrt(x**2 + y**2 + z**2)
+        
+        self.assertLess(slant_range, self.max_nohd)
+        
+        az, el = enu_to_spherical(x, y, z)
+        uv = spherical_to_texture_uv(az, el, self.azimuth, self.h_fov, self.v_fov)
+        
+        self.assertIsNotNone(uv)
+        u, v = uv
+        self.assertAlmostEqual(u, 0.5, places=2)
+        self.assertAlmostEqual(v, 0.75, places=2)
+
+    def test_aircraft_exceeds_nohd_gate(self):
+        test_lat = self.ref_lat + (5000.0 / 110574.0)
+        test_lon = self.ref_lon
+        test_alt = self.ref_alt + 1000.0
+        
+        x, y, z = wgs84_to_local_enu(test_lat, test_lon, test_alt, self.ref_lat, self.ref_lon, self.ref_alt)
+        slant_range = math.sqrt(x**2 + y**2 + z**2)
+        
+        self.assertGreater(slant_range, self.max_nohd)
+
+    def test_aircraft_inside_nohd_but_outside_fov(self):
+        test_lat = self.ref_lat - (1000.0 / 110574.0) 
+        test_lon = self.ref_lon
+        test_alt = self.ref_alt + 500.0
+        
+        x, y, z = wgs84_to_local_enu(test_lat, test_lon, test_alt, self.ref_lat, self.ref_lon, self.ref_alt)
+        slant_range = math.sqrt(x**2 + y**2 + z**2)
+        
+        self.assertLess(slant_range, self.max_nohd)
+        
+        az, el = enu_to_spherical(x, y, z)
+        uv = spherical_to_texture_uv(az, el, self.azimuth, self.h_fov, self.v_fov)
+        
+        self.assertIsNone(uv)
+
+if __name__ == '__main__':
+    unittest.main()
+
+```
+
+---
+
+### 4. `mock_projector.py`
+
+```python
+from pythonosc.dispatcher import Dispatcher
+from pythonosc.osc_server import BlockingOSCUDPServer
+import threading
+import time
+
+def handler(address, *args):
+    print(f"OSC Command Received: {address} with args {args}")
+
+def run_server(port):
+    dispatcher = Dispatcher()
+    dispatcher.set_default_handler(handler)
+    server = BlockingOSCUDPServer(("127.0.0.1", port), dispatcher)
+    print(f"Server listening on port {port}...")
+    server.serve_forever()
+
+if __name__ == "__main__":
+    ports = [7000, 8000, 9000]
+    for port in ports:
+        thread = threading.Thread(target=run_server, args=(port,), daemon=True)
+        thread.start()
+    
+    print("All simulators running. Press Ctrl+C to exit.")
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        print("Shutting down.")
+
+```
