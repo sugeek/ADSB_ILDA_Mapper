@@ -24,7 +24,7 @@ This system is designed to be hardware-agnostic, providing a unified safety inte
 *Note: All nodes utilize the same core spatial math and configuration file, ensuring that hazard boundary enforcement is consistent across your entire rig.*
 
 ## Repository Structure
-
+```
 laser-safety-system/
 │
 ├── src/
@@ -38,6 +38,7 @@ laser-safety-system/
 ├── mock_projector.py       # Local OSC server for testing without hardware
 ├── requirements.txt        # Python dependencies
 └── README.md
+```
 
 # Setup & Installation
 
