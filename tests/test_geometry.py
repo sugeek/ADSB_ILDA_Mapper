@@ -105,5 +105,23 @@ class TestLaserSafetyLogic(unittest.TestCase):
         self.assertIsNotNone(uv_bottom)
         self.assertEqual(uv_bottom[1], 0.0)
 
+    def test_quad_vertex_bounds(self):
+        """Verify that quad expansion (p) does not push coordinates out of [0, 1] range."""
+        # Test an aircraft at the very edge of the FOV
+        az, el = self.azimuth, 0.0 # Center
+        u, v = 0.01, 0.5  # Very close to the left edge
+        p = 0.05 # Expansion is larger than the distance to the edge
+        
+        # Simulating the node's quad logic
+        quad_points = [(u - p, v + p), (u - p, v - p), (u + p, v - p), (u + p, v + p)]
+        
+        for px, py in quad_points:
+            # The math should clamp these to 0.0 or 1.0
+            self.assertGreaterEqual(px, 0.0)
+            self.assertLessEqual(px, 1.0)
+            self.assertGreaterEqual(py, 0.0)
+            self.assertLessEqual(py, 1.0)
+
+
 if __name__ == '__main__':
     unittest.main()

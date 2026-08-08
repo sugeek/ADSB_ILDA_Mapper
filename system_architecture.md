@@ -92,7 +92,7 @@ kubectl port-forward service/show-mqtt 1883:1883
   },
   "system": {
     "watchdog_timeout": 1.0,
-    "adsb_url": "http://127.0.0",
+    "adsb_url": "http://127.0.0.1:8080/data/aircraft.json",
     "log_path": "logs/safety_system.log",
     "mqtt_broker_ip": "192.168.1.50",
     "mqtt_broker_port": 1883,
