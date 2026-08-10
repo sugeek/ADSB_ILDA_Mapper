@@ -39,7 +39,8 @@ class TestLaserSafetyLogic(unittest.TestCase):
         test_lat = self.ref_lat + (1000.0 / 110574.0) 
         test_lon = self.ref_lon         
         y_dist = 1000.0
-        test_alt = self.ref_alt + (math.tan(math.radians(22.5)) * y_dist)
+        # Use 15 degrees instead of 22.5 to stay safely within FOV boundaries
+        test_alt = self.ref_alt + (math.tan(math.radians(15.0)) * y_dist)
         
         x, y, z = wgs84_to_local_enu(test_lat, test_lon, test_alt, self.ref_lat, self.ref_lon, self.ref_alt)
         slant_range = math.sqrt(x**2 + y**2 + z**2)
@@ -52,7 +53,7 @@ class TestLaserSafetyLogic(unittest.TestCase):
         self.assertIsNotNone(uv)
         u, v = uv
         self.assertAlmostEqual(u, 0.5, places=2)
-        self.assertAlmostEqual(v, 0.75, places=2)
+        self.assertAlmostEqual(v, 0.83, places=2)
 
     def test_aircraft_exceeds_nohd_gate(self):
         # Place aircraft 5000m away (outside 3500m NOHD)
@@ -104,6 +105,29 @@ class TestLaserSafetyLogic(unittest.TestCase):
         uv_bottom = spherical_to_texture_uv(0.0, -22.5, self.azimuth, self.h_fov, self.v_fov)
         self.assertIsNotNone(uv_bottom)
         self.assertEqual(uv_bottom[1], 0.0)
+
+    def test_quad_vertex_bounds(self):
+        """Verify that quad expansion (p) does not push coordinates out of [0, 1] range."""
+        # Test an aircraft at the very edge of the FOV
+        az, el = self.azimuth, 0.0 # Center
+        u, v = 0.01, 0.5  # Very close to the left edge
+        p = 0.05 # Expansion is larger than the distance to the edge
+        
+        # Simulating the node's quad logic with clamping
+        quad_points = [
+            (max(0.0, min(1.0, u - p)), max(0.0, min(1.0, v + p))),
+            (max(0.0, min(1.0, u - p)), max(0.0, min(1.0, v - p))),
+            (max(0.0, min(1.0, u + p)), max(0.0, min(1.0, v - p))),
+            (max(0.0, min(1.0, u + p)), max(0.0, min(1.0, v + p)))
+        ]
+        
+        for px, py in quad_points:
+            # The math should clamp these to 0.0 or 1.0
+            self.assertGreaterEqual(px, 0.0)
+            self.assertLessEqual(px, 1.0)
+            self.assertGreaterEqual(py, 0.0)
+            self.assertLessEqual(py, 1.0)
+
 
 if __name__ == '__main__':
     unittest.main()

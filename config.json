@@ -5,7 +5,8 @@
     "alt_m": 1200.0,
     "azimuth": 0.0,
     "h_fov": 60.0,
-    "v_fov": 45.0
+    "v_fov": 45.0,
+    "divergence_mrad": 2
   },
   "hazard_zone": {
     "max_nohd_meters": 3500.0
@@ -13,11 +14,17 @@
   "system": {
     "watchdog_timeout": 1.0,
     "adsb_url": "http://127.0.0.1:8080/data/aircraft.json",
-    "log_path": "logs/safety_system.log"
+    "log_path": "logs/safety_system.log",
+    "mqtt_broker_ip": "192.168.1.50",
+    "mqtt_broker_port": 1883,
+    "mqtt_topic": "telemetry/#",
+    "uav_data_timeout_seconds": 5.0
   },
   "osc_targets": {
-    "madmapper": {"ip": "127.0.0.1", "port": 8000},
+    "madmapper": {"ip": "127.0.0.1", "port": 8010},
     "pangolin": {"ip": "127.0.0.1", "port": 9000},
-    "openlase": {"ip": "127.0.0.1", "port": 7000}
+    "openlase": {"ip": "127.0.0.1", "port": 7000},
+    "radiator": {"ip": "127.0.0.1", "port": 8000},
+    "uav_tracker_prefix": "/madlaser/elements/uav"
   }
 }
